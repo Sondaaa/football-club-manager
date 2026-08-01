@@ -39,5 +39,8 @@ export const api = {
 
   addInjury: (playerId, injury) => request(`/players/${playerId}/injuries`, { method: "POST", body: JSON.stringify(injury) }),
   updateInjury: (id, patch) => request(`/injuries/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
-  deleteInjury: (id) => request(`/injuries/${id}`, { method: "DELETE" })
+  deleteInjury: (id) => request(`/injuries/${id}`, { method: "DELETE" }),
+
+  addInjurySession: (injuryId, session) => request(`/injuries/${injuryId}/sessions`, { method: "POST", body: JSON.stringify(session) }),
+  deleteInjurySession: (id) => request(`/sessions/${id}`, { method: "DELETE" })
 };

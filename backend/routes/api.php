@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\CardController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\FixtureController;
 use App\Http\Controllers\Api\GoalController;
+use App\Http\Controllers\Api\InjurySessionController;
+
 use App\Http\Controllers\Api\InjuryController;
 use App\Http\Controllers\Api\PlayerController;
 use App\Http\Controllers\Api\SettingController;
@@ -37,3 +39,7 @@ Route::put('/standings/{categoryId}', [StandingController::class, 'replace']);
 Route::post('/players/{playerId}/injuries', [InjuryController::class, 'store']);
 Route::patch('/injuries/{id}', [InjuryController::class, 'update']);
 Route::delete('/injuries/{id}', [InjuryController::class, 'destroy']);
+
+Route::post('/injuries/{injuryId}/sessions', [InjurySessionController::class, 'store']);
+Route::delete('/sessions/{id}', [InjurySessionController::class, 'destroy']);
+

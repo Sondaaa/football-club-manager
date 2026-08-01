@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   LayoutDashboard, Users, CalendarDays, Trophy, BarChart3,
   Plus, Trash2, X, ChevronRight, Shield, MapPin, Save,
-  ArrowUpRight, ArrowDownRight, Minus, Menu, Target, RefreshCw
+  ArrowUpRight, ArrowDownRight, Minus, Menu, Target, RefreshCw, Activity
 } from "lucide-react";
 import { api } from "./api.js";
 
@@ -89,6 +89,7 @@ export default function ClubManagerApp() {
     { id: "categories", label: "Categories", icon: Shield },
     { id: "players", label: "Joueurs", icon: Users },
     { id: "calendar", label: "Calendrier & cartons", icon: CalendarDays },
+    { id: "injuries", label: "Blessures", icon: Activity },
     { id: "standings", label: "Classement ligue", icon: Trophy },
     { id: "stats", label: "Statistiques", icon: BarChart3 }
   ];
@@ -148,6 +149,7 @@ export default function ClubManagerApp() {
           {tab === "categories" && <Categories data={data} refresh={refresh} />}
           {tab === "players" && <Players data={data} refresh={refresh} />}
           {tab === "calendar" && <MatchCalendar data={data} refresh={refresh} selectedMatchId={selectedMatchId} setSelectedMatchId={setSelectedMatchId} />}
+          {tab === "injuries" && <InjuriesModule data={data} refresh={refresh} />}
           {tab === "standings" && <LeagueStandings data={data} refresh={refresh} />}
           {tab === "stats" && <Stats data={data} />}
         </div>
@@ -439,53 +441,249 @@ function Players({ data, refresh }) {
 }
 
 function PlayerInjuries({ player, refresh }) {
-  const [form, setForm] = useState({ type: "", gravite: "legere", date: todayISO(), retourPrevu: "", medecin: "", notes: "" });
+  const [form, setForm] = useState({ type: "", zone: "", gravite: "legere", date: todayISO(), retourPrevu: "", medecin: "", kinesitherapeute: "" });
   const injuries = player.injuries || [];
 
   const addInjury = async () => {
     if (!form.type.trim()) return;
     await api.addInjury(player.id, form);
-    setForm({ type: "", gravite: "legere", date: todayISO(), retourPrevu: "", medecin: "", notes: "" });
+    setForm({ type: "", zone: "", gravite: "legere", date: todayISO(), retourPrevu: "", medecin: "", kinesitherapeute: "" });
     refresh();
   };
-  const removeInjury = async (id) => { await api.deleteInjury(id); refresh(); };
-
-  const graviteLabel = { legere: "Legere", moderee: "Moderee", grave: "Grave" };
-  const graviteColor = { legere: "#E3B23C", moderee: "#B5654A", grave: "#C0392B" };
 
   return (
     <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #E7E3D6" }}>
       <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10 }}>Blessures</div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-        <input className="cm-input" style={{ maxWidth: 160 }} placeholder="Type (ex: entorse)" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} />
-        <select className="cm-select" style={{ maxWidth: 120 }} value={form.gravite} onChange={(e) => setForm({ ...form, gravite: e.target.value })}>
+        <input className="cm-input" style={{ maxWidth: 150 }} placeholder="Type (ex: entorse)" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} />
+        <input className="cm-input" style={{ maxWidth: 140 }} placeholder="Zone (ex: genou)" value={form.zone} onChange={(e) => setForm({ ...form, zone: e.target.value })} />
+        <select className="cm-select" style={{ maxWidth: 110 }} value={form.gravite} onChange={(e) => setForm({ ...form, gravite: e.target.value })}>
           <option value="legere">Legere</option>
           <option value="moderee">Moderee</option>
           <option value="grave">Grave</option>
         </select>
         <input className="cm-input" style={{ maxWidth: 140 }} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
         <input className="cm-input" style={{ maxWidth: 140 }} type="date" placeholder="Retour prevu" value={form.retourPrevu} onChange={(e) => setForm({ ...form, retourPrevu: e.target.value })} />
-        <input className="cm-input" style={{ maxWidth: 150 }} placeholder="Medecin" value={form.medecin} onChange={(e) => setForm({ ...form, medecin: e.target.value })} />
+        <input className="cm-input" style={{ maxWidth: 140 }} placeholder="Medecin" value={form.medecin} onChange={(e) => setForm({ ...form, medecin: e.target.value })} />
+        <input className="cm-input" style={{ maxWidth: 150 }} placeholder="Kinesitherapeute" value={form.kinesitherapeute} onChange={(e) => setForm({ ...form, kinesitherapeute: e.target.value })} />
         <button className="cm-btn cm-btn-gold" onClick={addInjury}><Plus size={14} /> Ajouter</button>
       </div>
 
       {injuries.length === 0 && <div style={{ color: "#8B8778", fontSize: 13 }}>Aucune blessure enregistree.</div>}
-      {injuries.map((inj) => (
-        <div key={inj.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #EFECE2", fontSize: 13 }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span className="cm-badge" style={{ background: graviteColor[inj.gravite] + "22", color: graviteColor[inj.gravite] }}>{graviteLabel[inj.gravite] || inj.gravite}</span>
-            <strong>{inj.type}</strong>
-            <span style={{ color: "#8B8778" }}>
-              {formatDateShort(inj.date)}{inj.retourPrevu ? " - retour prevu " + formatDateShort(inj.retourPrevu) : ""}{inj.medecin ? " - " + inj.medecin : ""}
-            </span>
+      {injuries.map((inj) => <InjuryCard key={inj.id} injury={inj} refresh={refresh} />)}
+    </div>
+  );
+}
+
+function InjuryCard({ injury: inj, refresh, playerLabel }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const removeInjury = async (id) => { await api.deleteInjury(id); refresh(); };
+  const patchInjury = async (id, field, val) => { await api.updateInjury(id, { [field]: val }); refresh(); };
+
+  const graviteLabel = { legere: "Legere", moderee: "Moderee", grave: "Grave" };
+  const graviteColor = { legere: "#E3B23C", moderee: "#B5654A", grave: "#C0392B" };
+  const statutLabel = { en_cours: "En cours", gueri: "Gueri", rechute: "Rechute" };
+  const statutColor = { en_cours: "#457B9D", gueri: "#2D6A4F", rechute: "#C0392B" };
+
+  return (
+    <div style={{ border: "1px solid #EFECE2", borderRadius: 8, marginBottom: 8, padding: "8px 10px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, flexWrap: "wrap", gap: 6 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {playerLabel}
+          <span className="cm-badge" style={{ background: graviteColor[inj.gravite] + "22", color: graviteColor[inj.gravite] }}>{graviteLabel[inj.gravite] || inj.gravite}</span>
+          <span className="cm-badge" style={{ background: statutColor[inj.statut] + "22", color: statutColor[inj.statut] }}>{statutLabel[inj.statut] || inj.statut}</span>
+          <strong>{inj.type}</strong>
+          {inj.zone && <span style={{ color: "#8B8778" }}>({inj.zone})</span>}
+          <span style={{ color: "#8B8778" }}>
+            {formatDateShort(inj.date)}{inj.retourPrevu ? " - retour prevu " + formatDateShort(inj.retourPrevu) : ""}
+          </span>
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="cm-btn cm-btn-ghost" style={{ padding: "3px 8px", fontSize: 12 }} onClick={() => setExpanded((v) => !v)}>
+            {expanded ? "Fermer" : "Details"}
           </span>
           <X size={13} style={{ cursor: "pointer", color: "#C0392B" }} onClick={() => removeInjury(inj.id)} />
+        </span>
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #EFECE2" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7269", marginBottom: 4, textTransform: "uppercase" }}>Statut</div>
+              <select className="cm-select" defaultValue={inj.statut} onChange={(e) => patchInjury(inj.id, "statut", e.target.value)}>
+                <option value="en_cours">En cours</option>
+                <option value="gueri">Gueri</option>
+                <option value="rechute">Rechute</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7269", marginBottom: 4, textTransform: "uppercase" }}>Kinesitherapeute</div>
+              <input className="cm-input" defaultValue={inj.kinesitherapeute || ""} onBlur={(e) => patchInjury(inj.id, "kinesitherapeute", e.target.value)} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7269", marginBottom: 4, textTransform: "uppercase" }}>Medecin</div>
+              <input className="cm-input" defaultValue={inj.medecin || ""} onBlur={(e) => patchInjury(inj.id, "medecin", e.target.value)} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7269", marginBottom: 4, textTransform: "uppercase" }}>Date de retour effectif</div>
+              <input className="cm-input" type="date" defaultValue={inj.dateRetourEffectif || ""} onBlur={(e) => patchInjury(inj.id, "dateRetourEffectif", e.target.value)} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7269", marginBottom: 4, textTransform: "uppercase" }}>Traitement / soins</div>
+              <input className="cm-input" defaultValue={inj.traitement || ""} onBlur={(e) => patchInjury(inj.id, "traitement", e.target.value)} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7269", marginBottom: 4, textTransform: "uppercase" }}>Examens (radio, IRM...)</div>
+              <input className="cm-input" defaultValue={inj.examens || ""} onBlur={(e) => patchInjury(inj.id, "examens", e.target.value)} />
+            </div>
+          </div>
+
+          <InjurySessions injury={inj} refresh={refresh} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InjurySessions({ injury, refresh }) {
+  const [form, setForm] = useState({ date: todayISO(), notes: "" });
+  const sessions = injury.sessions || [];
+
+  const addSession = async () => {
+    await api.addInjurySession(injury.id, form);
+    setForm({ date: todayISO(), notes: "" });
+    refresh();
+  };
+  const removeSession = async (id) => { await api.deleteInjurySession(id); refresh(); };
+
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7269", marginBottom: 6, textTransform: "uppercase" }}>Seances de reeducation</div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        <input className="cm-input" style={{ maxWidth: 140 }} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+        <input className="cm-input" placeholder="Notes de la seance" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+        <button className="cm-btn cm-btn-gold" onClick={addSession}><Plus size={14} /></button>
+      </div>
+      {sessions.length === 0 && <div style={{ color: "#8B8778", fontSize: 12 }}>Aucune seance enregistree.</div>}
+      {sessions.map((s) => (
+        <div key={s.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid #EFECE2", fontSize: 12 }}>
+          <span><strong>{formatDateShort(s.date)}</strong>{s.notes ? " - " + s.notes : ""}</span>
+          <X size={12} style={{ cursor: "pointer", color: "#C0392B" }} onClick={() => removeSession(s.id)} />
         </div>
       ))}
     </div>
   );
 }
+
+function flattenInjuries(data) {
+  const list = [];
+  data.players.forEach((p) => {
+    (p.injuries || []).forEach((inj) => {
+      list.push({ ...inj, playerId: p.id, playerName: fullName(p), categoryId: p.categoryId });
+    });
+  });
+  return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+}
+
+function InjuriesModule({ data, refresh }) {
+  const [statutFilter, setStatutFilter] = useState("all");
+  const [catFilter, setCatFilter] = useState("all");
+
+  const all = flattenInjuries(data);
+  const filtered = all.filter((inj) => (statutFilter === "all" || inj.statut === statutFilter) && (catFilter === "all" || inj.categoryId === catFilter));
+
+  const enCours = all.filter((i) => i.statut === "en_cours").length;
+  const gueris = all.filter((i) => i.statut === "gueri").length;
+  const rechutes = all.filter((i) => i.statut === "rechute").length;
+
+  const dureesResolues = all
+    .filter((i) => i.date && i.dateRetourEffectif)
+    .map((i) => (new Date(i.dateRetourEffectif) - new Date(i.date)) / (1000 * 60 * 60 * 24))
+    .filter((d) => d >= 0);
+  const dureeMoyenne = dureesResolues.length ? Math.round(dureesResolues.reduce((a, b) => a + b, 0) / dureesResolues.length) : null;
+
+  const zoneCounts = {};
+  all.forEach((i) => { if (i.zone) zoneCounts[i.zone] = (zoneCounts[i.zone] || 0) + 1; });
+  const topZones = Object.entries(zoneCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  const graviteCounts = { legere: 0, moderee: 0, grave: 0 };
+  all.forEach((i) => { graviteCounts[i.gravite] = (graviteCounts[i.gravite] || 0) + 1; });
+
+  const catName = (id) => data.categories.find((c) => c.id === id)?.name || "-";
+  const catColor = (id) => data.categories.find((c) => c.id === id)?.color || "#2D6A4F";
+
+  return (
+    <div>
+      <h2 style={{ fontSize: 20, fontWeight: 800, margin: "0 0 4px" }}>Blessures</h2>
+      <p style={{ color: "#6B7269", fontSize: 13, margin: "0 0 20px" }}>Suivi des blessures et de la reeducation pour le directeur technique et le kinesitherapeute.</p>
+
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 20 }}>
+        <StatCard label="Blessures en cours" value={enCours} accent="#457B9D" />
+        <StatCard label="Joueurs gueris" value={gueris} accent="#2D6A4F" />
+        <StatCard label="Rechutes" value={rechutes} accent="#C0392B" />
+        <StatCard label="Duree moyenne indisponibilite" value={dureeMoyenne != null ? `${dureeMoyenne} j` : "-"} sub="Sur blessures avec retour effectif" />
+        <StatCard label="Total blessures" value={all.length} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+        <div className="cm-card">
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10 }}>Repartition par gravite</div>
+          <table className="cm-table">
+            <tbody>
+              <tr><td>Legere</td><td style={{ textAlign: "right", fontWeight: 800 }}>{graviteCounts.legere}</td></tr>
+              <tr><td>Moderee</td><td style={{ textAlign: "right", fontWeight: 800 }}>{graviteCounts.moderee}</td></tr>
+              <tr><td>Grave</td><td style={{ textAlign: "right", fontWeight: 800 }}>{graviteCounts.grave}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="cm-card">
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10 }}>Zones les plus touchees</div>
+          {topZones.length === 0 && <div style={{ color: "#8B8778", fontSize: 13 }}>Aucune donnee.</div>}
+          <table className="cm-table">
+            <tbody>
+              {topZones.map(([zone, count]) => (
+                <tr key={zone}><td>{zone}</td><td style={{ textAlign: "right", fontWeight: 800 }}>{count}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <select className="cm-select" style={{ maxWidth: 180 }} value={statutFilter} onChange={(e) => setStatutFilter(e.target.value)}>
+          <option value="all">Tous les statuts</option>
+          <option value="en_cours">En cours</option>
+          <option value="gueri">Gueri</option>
+          <option value="rechute">Rechute</option>
+        </select>
+        <select className="cm-select" style={{ maxWidth: 200 }} value={catFilter} onChange={(e) => setCatFilter(e.target.value)}>
+          <option value="all">Toutes les categories</option>
+          {data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+
+      {filtered.length === 0 && <div style={{ color: "#8B8778", fontSize: 13 }}>Aucune blessure ne correspond a ces filtres.</div>}
+      {filtered.map((inj) => (
+        <InjuryCard
+          key={inj.id}
+          injury={inj}
+          refresh={refresh}
+          playerLabel={
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <strong>{inj.playerName}</strong>
+              <span className="cm-badge" style={{ background: catColor(inj.categoryId) + "22", color: catColor(inj.categoryId) }}>{catName(inj.categoryId)}</span>
+            </span>
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+
 
 
 function MatchCalendar({ data, refresh, selectedMatchId, setSelectedMatchId }) {
